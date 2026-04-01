@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>未来学苑系统 AI 主观题智能批阅功能介绍</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; }
+    .table-row-hover:hover { background-color: #f5f5f5; }
+    .modal-backdrop {
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.3); display: none;
+      align-items: center; justify-content: center; z-index: 50;
+    }
+    .modal-content {
+      background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      width: 90%; max-width: 700px; padding: 20px;
+    }
+    /* AI 批阅反馈区：提示词说明横幅 */
+    .feedback-prompt-notice {
+      box-shadow: 0 1px 3px rgba(180, 83, 9, 0.12);
+    }
+    /* 评分对比：分差口径说明横幅（样式与反馈提示一致） */
+    .score-metric-notice {
+      box-shadow: 0 1px 3px rgba(180, 83, 9, 0.12);
+    }
+    /* AI 批阅反馈区：限制缩略高度，点击放大 */
+    .feedback-feed-img {
+      display: block;
+      max-height: min(42vh, 320px);
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      object-position: top center;
+      background: #f3f4f6;
+      cursor: zoom-in;
+    }
+    .image-lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(0,0,0,0.92);
+      display: none;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+    .image-lightbox.is-open {
+      display: flex;
+    }
+    .image-lightbox-toolbar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      z-index: 2;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: calc(100% - 120px);
+    }
+    .image-lightbox-toolbar button {
+      padding: 6px 12px;
+      font-size: 15px;
+      line-height: 1;
+      color: #fff;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .image-lightbox-toolbar button:hover {
+      background: rgba(255,255,255,0.28);
+    }
+    .image-lightbox-zoom-label {
+      font-size: 13px;
+      color: rgba(255,255,255,0.9);
+      min-width: 3.2em;
+      text-align: center;
+      user-select: none;
+    }
+    .image-lightbox-viewport {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      overflow: auto;
+      overflow-x: auto;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      box-sizing: border-box;
+      cursor: grab;
+    }
+    .image-lightbox-viewport.is-panning {
+      cursor: grabbing;
+      user-select: none;
+    }
+    /* 内层至少铺满视口，放大后尺寸由图片撑开，才能正常出现滚动条 / 拖动平移 */
+    .image-lightbox-pan-inner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      min-width: 100%;
+      min-height: 100%;
+      width: max-content;
+      height: max-content;
+      padding: 52px 20px 20px;
+    }
+    .image-lightbox-viewport img {
+      display: block;
+      max-width: none;
+      max-height: none;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 4px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      flex-shrink: 0;
+      pointer-events: auto;
+      -webkit-user-drag: none;
+      user-select: none;
+    }
+    .image-lightbox-close {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      padding: 6px 14px;
+      font-size: 14px;
+      color: #fff;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .image-lightbox-close:hover {
+      background: rgba(255,255,255,0.25);
+    }
+  </style>
+  <!-- 本地数据：与 index.html 同目录；分科编辑 chinese.js / chinese-argument.js / biology.js / history.js 等，双击打开即可 -->
+  <script src="chinese.js"></script>
+  <script src="chinese-argument.js"></script>
+  <script src="biology.js"></script>
+  <script src="history.js"></script>
+  <script src="politics.js"></script>
+  <script src="geography.js"></script>
+  <script src="demo-data.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+  <h1 class="text-2xl md:text-3xl font-semibold text-center mb-6">
+    未来学苑系统 AI 主观题智能批阅功能介绍
+  </h1>
+
+  <div class="flex justify-center gap-2 mb-8" id="subject-tabs">
+    <button type="button" class="px-5 py-2 bg-gray-800 text-white rounded" data-subject="chinese">语文</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="chinese_argument">语文-议论文</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="biology">生物</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="history">历史</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="politics">政治</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="geography">地理</button>
+  </div>
+
+  <div id="subject-container">
+
+    <div id="chinese" class="subject-panel block" data-subject-panel="chinese">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="chinese"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+    <div id="chinese_argument" class="subject-panel hidden" data-subject-panel="chinese_argument">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="chinese_argument"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <!-- 本科目不需要 AI 答疑演示模块 -->
+    </div>
+
+    <div id="biology" class="subject-panel hidden" data-subject-panel="biology">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="biology"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+    <div id="history" class="subject-panel hidden" data-subject-panel="history">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="history"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+    <div id="politics" class="subject-panel hidden" data-subject-panel="politics">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="politics"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+    <div id="geography" class="subject-panel hidden" data-subject-panel="geography">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="geography"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-backdrop" id="detail-modal">
+  <div class="modal-content">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-medium" id="detail-modal-title"></h3>
+      <button type="button" id="close-modal" class="text-gray-500">关闭</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="detail-modal-table">
+        <thead id="detail-modal-thead"></thead>
+        <tbody id="detail-modal-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="image-lightbox" id="image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览">
+  <button type="button" class="image-lightbox-close" id="image-lightbox-close">关闭</button>
+  <div class="image-lightbox-toolbar" id="image-lightbox-toolbar">
+    <button type="button" id="image-lightbox-zoom-out" title="缩小（或向下滚动）">−</button>
+    <span class="image-lightbox-zoom-label" id="image-lightbox-zoom-label">100%</span>
+    <button type="button" id="image-lightbox-zoom-in" title="放大（或向上滚动）">+</button>
+    <button type="button" id="image-lightbox-zoom-reset" title="适应窗口">复位</button>
+  </div>
+  <div class="image-lightbox-viewport" id="image-lightbox-viewport">
+    <div class="image-lightbox-pan-inner" id="image-lightbox-pan-inner">
+      <img src="" alt="" id="image-lightbox-img" draggable="false">
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const DATA = window.DEMO_DATA;
+  if (!DATA) {
+    console.error('未加载演示数据：请保证 chinese.js / chinese-argument.js / biology.js / history.js / politics.js / geography.js / demo-data.js 与 index.html 同目录且按顺序引入');
+    return;
+  }
+
+  const SUBJECT_IDS = ['chinese', 'chinese_argument', 'biology', 'history', 'politics', 'geography'];
+
+  /** 当前选中的学科、轮次（与数据层同步） */
+  let currentSubject = 'chinese';
+  let currentRound = 1;
+
+  function getSubjectConfig(id) {
+    return DATA[id];
+  }
+
+  function getRoundPayload(subjectId, round) {
+    const cfg = getSubjectConfig(subjectId);
+    if (!cfg) return null;
+    const key = String(round);
+    return cfg.byRound[key] || null;
+  }
+
+  function normalizeRound(subjectId, round) {
+    const cfg = getSubjectConfig(subjectId);
+    if (!cfg || !cfg.rounds || !cfg.rounds.length) return 1;
+    const r = cfg.rounds.includes(round) ? round : cfg.rounds[0];
+    return r;
+  }
+
+  function panelEl(subjectId) {
+    return document.querySelector('[data-subject-panel="' + subjectId + '"]');
+  }
+
+  function renderRoundTabs(subjectId, activeRound) {
+    const cfg = getSubjectConfig(subjectId);
+    const host = document.querySelector('[data-round-tabs="' + subjectId + '"]');
+    if (!cfg || !host) return;
+    const rounds = cfg.rounds || [1];
+    const ar = normalizeRound(subjectId, activeRound);
+    host.innerHTML = rounds.map(function (n) {
+      var active = n === ar;
+      var cls = active
+        ? 'px-3 py-1 bg-gray-800 text-white rounded text-sm'
+        : 'px-3 py-1 bg-gray-200 rounded text-sm';
+      return '<button type="button" class="' + cls + '" data-round="' + n + '">第' + n + '轮</button>';
+    }).join('');
+  }
+
+  function renderTableHead(thead, teacherLabel, aiLabel, withOperation) {
+    var op = withOperation !== false;
+    thead.innerHTML =
+      '<tr class="bg-gray-100 border-b">' +
+      '<th class="p-3 text-left">匿名姓名</th>' +
+      '<th class="p-3 text-right">' + teacherLabel + '</th>' +
+      '<th class="p-3 text-right">' + aiLabel + '</th>' +
+      '<th class="p-3 text-right">分差</th>' +
+      '<th class="p-3 text-right">分差百分比</th>' +
+      (op ? '<th class="p-3 text-center">操作</th>' : '') +
+      '</tr>';
+  }
+
+  function renderScoreTable(subjectId, round) {
+    var p = panelEl(subjectId);
+    if (!p) return;
+    var cfg = getSubjectConfig(subjectId);
+    var r = normalizeRound(subjectId, round);
+    var payload = getRoundPayload(subjectId, r);
+    var thead = p.querySelector('.score-thead');
+    var tbody = p.querySelector('.score-tbody');
+    var withOperation = !(cfg && cfg.hideOperationColumn);
+    renderTableHead(thead, cfg.teacherLabel, cfg.aiLabel, withOperation);
+
+    if (!payload || !payload.rows || !payload.rows.length) {
+      tbody.innerHTML = '<tr><td class="p-3 text-gray-500" colspan="' + (withOperation ? 6 : 5) + '">暂无该轮数据，请在对应学科 js 中配置 byRound[\'' + r + '\']</td></tr>';
+      return;
+    }
+    tbody.innerHTML = payload.rows.map(function (row, idx) {
+      return (
+        '<tr class="table-row-hover border-b">' +
+        '<td class="p-3">' + escapeHtml(row.name) + '</td>' +
+        '<td class="text-right">' + row.t + '</td>' +
+        '<td class="text-right">' + row.a + '</td>' +
+        '<td class="text-right">' + row.d + '</td>' +
+        '<td class="text-right">' + escapeHtml(row.p) + '</td>' +
+        (withOperation
+          ? ('<td class="text-center">' +
+            '<button type="button" class="text-xs bg-gray-200 px-2 py-1 rounded detail-btn" data-detail-subject="' + subjectId + '" data-detail-round="' + r + '" data-detail-row="' + idx + '">查看详情</button>' +
+            '</td>')
+          : '') +
+        '</tr>'
+      );
+    }).join('');
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /** 小题分差百分比：优先用数据中的 p；否则按 分差/教师评分；教师为 0 时显示 — */
+  function formatDetailPct(d) {
+    if (d.p != null && d.p !== '') return escapeHtml(String(d.p));
+    var tv = Number(d.t);
+    if (!tv) return '—';
+    return ((Number(d.d) / tv) * 100).toFixed(2) + '%';
+  }
+
+  /**
+   * 详情弹窗：标题、表头、表体均由数据与学科配置生成（可在学科 js 中配置 detailModal 覆盖）
+   */
+  function renderDetailModal(subjectId, round, rowIdx) {
+    var cfg = getSubjectConfig(subjectId);
+    var r = normalizeRound(subjectId, round);
+    var payload = getRoundPayload(subjectId, r);
+    if (!cfg || !payload || !payload.rows || !payload.rows[rowIdx]) return false;
+
+    var dm = Object.assign({}, cfg.detailModal || {}, payload.detailModal || {});
+    var title = dm.title != null ? dm.title : '小题得分详情';
+    var qLabel = dm.questionLabel != null ? dm.questionLabel : '题号';
+    var teacherCol = dm.teacherLabel != null ? dm.teacherLabel : cfg.teacherLabel;
+    var aiCol = dm.aiLabel != null ? dm.aiLabel : cfg.aiLabel;
+
+    document.getElementById('detail-modal-title').textContent = title;
+
+    document.getElementById('detail-modal-thead').innerHTML =
+      '<tr class="bg-gray-100 border-b">' +
+      '<th class="p-2 text-left">' + escapeHtml(qLabel) + '</th>' +
+      '<th class="text-right p-2">' + escapeHtml(teacherCol) + '</th>' +
+      '<th class="text-right p-2">' + escapeHtml(aiCol) + '</th>' +
+      '<th class="text-right p-2">分差</th>' +
+      '<th class="text-right p-2">分差百分比</th>' +
+      '</tr>';
+
+    var detail = payload.rows[rowIdx].detail;
+    var modalTbody = document.getElementById('detail-modal-tbody');
+    var colSpan = 5;
+
+    if (!detail || !detail.length) {
+      modalTbody.innerHTML =
+        '<tr><td class="p-2 text-gray-500" colspan="' + colSpan + '">暂无小题明细，可在对应学科 js 的 rows[].detail 中填写</td></tr>';
+    } else {
+      modalTbody.innerHTML = detail.map(function (d) {
+        return (
+          '<tr class="border-b">' +
+          '<td class="p-2">' + escapeHtml(d.q) + '</td>' +
+          '<td class="text-right">' + d.t + '</td>' +
+          '<td class="text-right">' + d.a + '</td>' +
+          '<td class="text-right">' + d.d + '</td>' +
+          '<td class="text-right">' + formatDetailPct(d) + '</td></tr>'
+        );
+      }).join('');
+    }
+    return true;
+  }
+
+  /** 截图与视频跟学科走：优先学科顶层 feedback / video；否则回退到 rounds[0] 对应轮次（政治、地理等仍可按轮维护） */
+  function getSubjectMediaRound(subjectId) {
+    var cfg = getSubjectConfig(subjectId);
+    if (!cfg || !cfg.rounds || !cfg.rounds.length) return 1;
+    return cfg.rounds[0];
+  }
+
+  function getSubjectMediaPayload(subjectId) {
+    var cfg = getSubjectConfig(subjectId);
+    if (!cfg) return null;
+    var fromRound = getRoundPayload(subjectId, getSubjectMediaRound(subjectId)) || {};
+    return {
+      feedback: Array.isArray(cfg.feedback) ? cfg.feedback : (fromRound.feedback || []),
+      video: typeof cfg.video === 'string' && cfg.video ? cfg.video : (fromRound.video || '')
+    };
+  }
+
+  function renderFeedback(subjectId) {
+    var p = panelEl(subjectId);
+    var payload = getSubjectMediaPayload(subjectId);
+    var grid = p.querySelector('.feedback-grid');
+    if (!grid) return;
+    if (!payload || !payload.feedback || !payload.feedback.length) {
+      grid.innerHTML = '<div class="col-span-2 text-sm text-gray-500">暂无截图数据</div>';
+      return;
+    }
+    grid.innerHTML = payload.feedback.map(function (block) {
+      var imgs = (block.images || []).map(function (src) {
+        return (
+          '<img src="' + escapeHtml(src) + '" alt="" class="feedback-feed-img rounded mb-2 border" ' +
+          'loading="lazy" tabindex="0" title="点击放大">'
+        );
+      }).join('');
+      var tips = (block.tips || []).map(function (line) {
+        return '<p>' + escapeHtml(line) + '</p>';
+      }).join('');
+      return (
+        '<div class="bg-white p-4 rounded shadow-sm">' +
+        '<p class="font-medium mb-2">' + escapeHtml(block.title || '') + '</p>' +
+        imgs +
+        '<div class="text-sm space-y-1">' + tips + '</div></div>'
+      );
+    }).join('');
+  }
+
+  function renderVideo(subjectId) {
+    var p = panelEl(subjectId);
+    var payload = getSubjectMediaPayload(subjectId);
+    var video = p.querySelector('.demo-video');
+    if (!video) return;
+    var src = (payload && payload.video) ? payload.video : '';
+    video.pause();
+    video.removeAttribute('src');
+    while (video.firstChild) video.removeChild(video.firstChild);
+    if (src) {
+      var source = document.createElement('source');
+      source.src = src;
+      source.type = 'video/mp4';
+      video.appendChild(source);
+      video.load();
+    }
+  }
+
+  function applySubjectTitles(subjectId) {
+    var cfg = getSubjectConfig(subjectId);
+    var p = panelEl(subjectId);
+    if (!cfg || !p) return;
+    p.querySelectorAll('.subject-title').forEach(function (el) {
+      el.textContent = cfg.title;
+    });
+  }
+
+  /**
+   * @param withMedia 为 true 时更新「AI 批阅效果反馈」与「智能答疑」视频（仅切换学科时需要）
+   */
+  function refreshPanel(subjectId, round, withMedia) {
+    var r = normalizeRound(subjectId, round);
+    currentSubject = subjectId;
+    currentRound = r;
+    renderRoundTabs(subjectId, r);
+    renderScoreTable(subjectId, r);
+    if (withMedia) {
+      renderFeedback(subjectId);
+      renderVideo(subjectId);
+    }
+  }
+
+  /** 学科 Tab */
+  document.querySelectorAll('#subject-tabs button[data-subject]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id = btn.getAttribute('data-subject');
+      document.querySelectorAll('#subject-tabs button').forEach(function (b) {
+        b.className = 'px-5 py-2 bg-gray-200 rounded';
+      });
+      btn.className = 'px-5 py-2 bg-gray-800 text-white rounded';
+      document.querySelectorAll('.subject-panel').forEach(function (panel) {
+        panel.classList.add('hidden');
+      });
+      var panel = document.getElementById(id);
+      if (panel) panel.classList.remove('hidden');
+      var cfg = getSubjectConfig(id);
+      var firstRound = cfg && cfg.rounds && cfg.rounds.length ? cfg.rounds[0] : 1;
+      refreshPanel(id, firstRound, true);
+    });
+  });
+
+  /** 轮次 Tab：事件委托（只刷新表格与轮次高亮，不切换截图/视频） */
+  document.getElementById('subject-container').addEventListener('click', function (e) {
+    var tabBtn = e.target.closest('[data-round-tabs] button[data-round]');
+    if (!tabBtn) return;
+    var host = tabBtn.closest('[data-round-tabs]');
+    if (!host) return;
+    var subjectId = host.getAttribute('data-round-tabs');
+    var round = parseInt(tabBtn.getAttribute('data-round'), 10);
+    if (!subjectId || isNaN(round)) return;
+    refreshPanel(subjectId, round, false);
+  });
+
+  /** 详情弹窗（标题与表头随学科 / 轮次数据动态生成） */
+  var modal = document.getElementById('detail-modal');
+  document.getElementById('subject-container').addEventListener('click', function (e) {
+    var detailBtn = e.target.closest('.detail-btn[data-detail-row]');
+    if (!detailBtn) return;
+    var rowIdx = parseInt(detailBtn.getAttribute('data-detail-row'), 10);
+    var sid = detailBtn.getAttribute('data-detail-subject');
+    var round = parseInt(detailBtn.getAttribute('data-detail-round'), 10);
+    if (!sid || isNaN(round) || isNaN(rowIdx)) return;
+    if (!renderDetailModal(sid, round, rowIdx)) return;
+    modal.style.display = 'flex';
+  });
+
+  document.getElementById('close-modal').addEventListener('click', function () {
+    modal.style.display = 'none';
+  });
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) modal.style.display = 'none';
+  });
+
+  /** 反馈区图片：点击放大（灯箱），支持滚轮/按钮缩放与拖动滚动查看 */
+  var imageLightbox = document.getElementById('image-lightbox');
+  var imageLightboxImg = document.getElementById('image-lightbox-img');
+  var imageLightboxViewport = document.getElementById('image-lightbox-viewport');
+  var imageLightboxPanInner = document.getElementById('image-lightbox-pan-inner');
+  var imageLightboxZoomLabel = document.getElementById('image-lightbox-zoom-label');
+
+  var lbNatW = 0;
+  var lbNatH = 0;
+  var lbBaseW = 0;
+  var lbBaseH = 0;
+  var lbZoom = 1;
+
+  function recomputeLbBase() {
+    if (!lbNatW || !lbNatH) return;
+    var vw = imageLightboxViewport.clientWidth - 24;
+    var vh = imageLightboxViewport.clientHeight - 24;
+    if (vw < 40 || vh < 40) return;
+    var fit = Math.min(vw / lbNatW, vh / lbNatH, 1);
+    lbBaseW = lbNatW * fit;
+    lbBaseH = lbNatH * fit;
+  }
+
+  function applyLbZoom() {
+    var z = Math.max(0.2, Math.min(8, lbZoom));
+    lbZoom = z;
+    if (lbBaseW && lbBaseH) {
+      imageLightboxImg.style.width = Math.round(lbBaseW * z) + 'px';
+      imageLightboxImg.style.height = Math.round(lbBaseH * z) + 'px';
+    }
+    imageLightboxZoomLabel.textContent = Math.round(z * 100) + '%';
+  }
+
+  function syncLbAfterImgLoad() {
+    lbNatW = imageLightboxImg.naturalWidth;
+    lbNatH = imageLightboxImg.naturalHeight;
+    if (!lbNatW) return;
+    recomputeLbBase();
+    applyLbZoom();
+    imageLightboxViewport.scrollLeft = Math.max(0, (imageLightboxViewport.scrollWidth - imageLightboxViewport.clientWidth) / 2);
+    imageLightboxViewport.scrollTop = Math.max(0, (imageLightboxViewport.scrollHeight - imageLightboxViewport.clientHeight) / 2);
+  }
+
+  function openImageLightbox(src, alt) {
+    lbZoom = 1;
+    imageLightboxImg.alt = alt || '';
+    imageLightboxImg.onload = function () {
+      syncLbAfterImgLoad();
+    };
+    imageLightboxImg.src = src;
+    if (imageLightboxImg.complete && imageLightboxImg.naturalWidth) {
+      syncLbAfterImgLoad();
+    }
+    imageLightbox.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeImageLightbox() {
+    imageLightbox.classList.remove('is-open');
+    imageLightboxImg.onload = null;
+    imageLightboxImg.removeAttribute('src');
+    imageLightboxImg.style.width = '';
+    imageLightboxImg.style.height = '';
+    lbNatW = lbNatH = lbBaseW = lbBaseH = 0;
+    lbZoom = 1;
+    imageLightboxZoomLabel.textContent = '100%';
+    document.body.style.overflow = '';
+  }
+
+  document.getElementById('subject-container').addEventListener('click', function (e) {
+    var thumb = e.target.closest('img.feedback-feed-img');
+    if (!thumb) return;
+    openImageLightbox(thumb.getAttribute('src') || '', thumb.getAttribute('alt') || '');
+  });
+
+  document.getElementById('image-lightbox-close').addEventListener('click', function (e) {
+    e.stopPropagation();
+    closeImageLightbox();
+  });
+
+  document.getElementById('image-lightbox-toolbar').addEventListener('click', function (e) {
+    e.stopPropagation();
+  });
+
+  document.getElementById('image-lightbox-zoom-in').addEventListener('click', function () {
+    lbZoom *= 1.2;
+    applyLbZoom();
+  });
+
+  document.getElementById('image-lightbox-zoom-out').addEventListener('click', function () {
+    lbZoom /= 1.2;
+    applyLbZoom();
+  });
+
+  document.getElementById('image-lightbox-zoom-reset').addEventListener('click', function () {
+    lbZoom = 1;
+    recomputeLbBase();
+    applyLbZoom();
+    imageLightboxViewport.scrollLeft = Math.max(0, (imageLightboxViewport.scrollWidth - imageLightboxViewport.clientWidth) / 2);
+    imageLightboxViewport.scrollTop = Math.max(0, (imageLightboxViewport.scrollHeight - imageLightboxViewport.clientHeight) / 2);
+  });
+
+  imageLightboxViewport.addEventListener('wheel', function (e) {
+    if (!imageLightbox.classList.contains('is-open')) return;
+    e.preventDefault();
+    var factor = e.deltaY > 0 ? 0.92 : 1.08;
+    lbZoom *= factor;
+    applyLbZoom();
+  }, { passive: false });
+
+  imageLightboxImg.addEventListener('dragstart', function (e) {
+    e.preventDefault();
+  });
+
+  /** 鼠标拖动平移（与滚动条等价，避免 flex 居中导致无法滚动的问题） */
+  var lbPanning = false;
+  var lbPanStartX = 0;
+  var lbPanStartY = 0;
+  var lbPanStartSL = 0;
+  var lbPanStartST = 0;
+  var lbPanDidDrag = false;
+
+  function lbOnPanMove(e) {
+    if (!lbPanning) return;
+    var dx = e.clientX - lbPanStartX;
+    var dy = e.clientY - lbPanStartY;
+    if (Math.abs(dx) + Math.abs(dy) > 4) {
+      lbPanDidDrag = true;
+    }
+    imageLightboxViewport.scrollLeft = lbPanStartSL - dx;
+    imageLightboxViewport.scrollTop = lbPanStartST - dy;
+  }
+
+  function lbOnPanEnd() {
+    if (!lbPanning) return;
+    lbPanning = false;
+    imageLightboxViewport.classList.remove('is-panning');
+    document.removeEventListener('mousemove', lbOnPanMove);
+    document.removeEventListener('mouseup', lbOnPanEnd);
+  }
+
+  imageLightboxViewport.addEventListener('mousedown', function (e) {
+    if (!imageLightbox.classList.contains('is-open')) return;
+    if (e.button !== 0) return;
+    lbPanning = true;
+    lbPanDidDrag = false;
+    lbPanStartX = e.clientX;
+    lbPanStartY = e.clientY;
+    lbPanStartSL = imageLightboxViewport.scrollLeft;
+    lbPanStartST = imageLightboxViewport.scrollTop;
+    imageLightboxViewport.classList.add('is-panning');
+    document.addEventListener('mousemove', lbOnPanMove);
+    document.addEventListener('mouseup', lbOnPanEnd);
+  });
+
+  /** 点击视口内空白区域关闭（点到图片不关闭；拖动后松手不关闭） */
+  imageLightboxViewport.addEventListener('click', function (e) {
+    if (e.target === imageLightboxImg) return;
+    if (e.target !== imageLightboxViewport && e.target !== imageLightboxPanInner) return;
+    if (lbPanDidDrag) {
+      lbPanDidDrag = false;
+      return;
+    }
+    closeImageLightbox();
+  });
+
+  /** 双指捏合缩放（触控） */
+  var lbPinchDist = 0;
+  var lbPinchStartZoom = 1;
+  imageLightboxViewport.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) {
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      lbPinchDist = Math.sqrt(dx * dx + dy * dy);
+      lbPinchStartZoom = lbZoom;
+    }
+  }, { passive: true });
+
+  imageLightboxViewport.addEventListener('touchmove', function (e) {
+    if (e.touches.length === 2 && lbPinchDist > 10) {
+      e.preventDefault();
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      lbZoom = lbPinchStartZoom * (dist / lbPinchDist);
+      applyLbZoom();
+    }
+  }, { passive: false });
+
+  imageLightboxViewport.addEventListener('touchend', function (e) {
+    if (e.touches.length < 2) {
+      lbPinchDist = 0;
+    }
+  });
+
+  imageLightbox.addEventListener('click', function (e) {
+    if (e.target === imageLightbox) {
+      closeImageLightbox();
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    if (!imageLightbox.classList.contains('is-open') || !lbNatW) return;
+    var prevZ = lbZoom;
+    recomputeLbBase();
+    lbZoom = prevZ;
+    applyLbZoom();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!imageLightbox.classList.contains('is-open')) {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('feedback-feed-img')) {
+        e.preventDefault();
+        openImageLightbox(e.target.getAttribute('src') || '', e.target.getAttribute('alt') || '');
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      closeImageLightbox();
+      return;
+    }
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      lbZoom *= 1.2;
+      applyLbZoom();
+    }
+    if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      lbZoom /= 1.2;
+      applyLbZoom();
+    }
+    if (e.key === '0') {
+      e.preventDefault();
+      lbZoom = 1;
+      recomputeLbBase();
+      applyLbZoom();
+    }
+  });
+
+  /** 初始化：各学科标题 + 默认语文第 1 轮 */
+  SUBJECT_IDS.forEach(function (id) {
+    applySubjectTitles(id);
+  });
+  refreshPanel('chinese', 1, true);
+})();
+</script>
+</body>
+</html>
