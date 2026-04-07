@@ -139,9 +139,11 @@
       background: rgba(255,255,255,0.25);
     }
   </style>
-  <!-- 本地数据：与 index.html 同目录；分科编辑 chinese.js / chinese-argument.js / biology.js / history.js 等，双击打开即可 -->
+  <!-- 本地数据：与 index.html 同目录；分科编辑 chinese.js、chinese-argument.js、chemistry-g1.js、chemistry-g2.js 等，双击打开即可 -->
   <script src="chinese.js"></script>
   <script src="chinese-argument.js"></script>
+  <script src="chemistry-g1.js"></script>
+  <script src="chemistry-g2.js"></script>
   <script src="biology.js"></script>
   <script src="history.js"></script>
   <script src="politics.js"></script>
@@ -158,6 +160,8 @@
   <div class="flex justify-center gap-2 mb-8" id="subject-tabs">
     <button type="button" class="px-5 py-2 bg-gray-800 text-white rounded" data-subject="chinese">语文</button>
     <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="chinese_argument">语文-议论文</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="chemistry_g1">化学 - 高一</button>
+    <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="chemistry_g2">化学 - 高二</button>
     <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="biology">生物</button>
     <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="history">历史</button>
     <button type="button" class="px-5 py-2 bg-gray-200 rounded" data-subject="politics">政治</button>
@@ -233,6 +237,78 @@
       </div>
       <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
       <!-- 本科目不需要 AI 答疑演示模块 -->
+    </div>
+
+    <div id="chemistry_g1" class="subject-panel hidden" data-subject-panel="chemistry_g1">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="chemistry_g1"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
+    </div>
+
+    <div id="chemistry_g2" class="subject-panel hidden" data-subject-panel="chemistry_g2">
+      <h2 class="text-xl font-medium mb-4">评分对比</h2>
+      <div class="score-metric-notice mb-4 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于分差计算口径的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          评分口径说明
+        </p>
+        <div class="text-sm text-amber-950/95 leading-relaxed pl-8 space-y-1">
+          <p>分差 = AI 批阅得分 − 教师批阅得分</p>
+          <p>分差百分比 = 分差 ÷ 教师批阅得分</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1 mb-4 round-tabs" data-round-tabs="chemistry_g2"></div>
+      <div class="bg-white rounded shadow-sm mb-10 overflow-x-auto">
+        <table class="w-full text-sm score-table">
+          <thead class="score-thead"></thead>
+          <tbody class="score-tbody"></tbody>
+        </table>
+      </div>
+      <h3 class="text-lg font-medium mb-3">AI 批阅效果反馈</h3>
+      <div class="feedback-prompt-notice mb-5 rounded-lg border-2 border-amber-500 bg-amber-50 px-4 py-3.5" role="note" aria-label="关于提示词与批阅效果的说明">
+        <p class="text-base font-bold text-amber-950 mb-1.5 flex items-center gap-2">
+          <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm text-white" aria-hidden="true">!</span>
+          提示词决定批阅效果，支持持续调优
+        </p>
+        <p class="text-sm text-amber-950/95 leading-relaxed pl-8">
+          下列截图为当前<strong class="text-amber-950">提示词（Prompt）</strong>配置下的批阅示例；更换或微调提示词后，批阅的表述、侧重点与得分倾向可能随之变化。可对照评分标准与教学目标，<strong class="text-amber-950">反复迭代、优化提示词</strong>，使 AI 批阅更稳定、更符合预期。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mb-8 feedback-grid"></div>
+      <div class="bg-white p-4 rounded shadow-sm mb-6 video-wrap">
+        <h4 class="font-medium mb-2">AI 答疑演示</h4>
+        <video class="w-full rounded demo-video" controls preload="metadata"></video>
+      </div>
     </div>
 
     <div id="biology" class="subject-panel hidden" data-subject-panel="biology">
@@ -416,11 +492,11 @@
 (function () {
   const DATA = window.DEMO_DATA;
   if (!DATA) {
-    console.error('未加载演示数据：请保证 chinese.js / chinese-argument.js / biology.js / history.js / politics.js / geography.js / demo-data.js 与 index.html 同目录且按顺序引入');
+    console.error('未加载演示数据：请保证 chinese.js / chinese-argument.js / chemistry-g1.js / chemistry-g2.js / biology.js / history.js / politics.js / geography.js / demo-data.js 与 index.html 同目录且按顺序引入');
     return;
   }
 
-  const SUBJECT_IDS = ['chinese', 'chinese_argument', 'biology', 'history', 'politics', 'geography'];
+  const SUBJECT_IDS = ['chinese', 'chinese_argument', 'chemistry_g1', 'chemistry_g2', 'biology', 'history', 'politics', 'geography'];
 
   /** 当前选中的学科、轮次（与数据层同步） */
   let currentSubject = 'chinese';
